@@ -1,4 +1,4 @@
-# Antigravity Quota Manager for Linux
+# Antigravity Quota Manager & Monitor for Linux
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux-blue.svg)](https://kernel.org)
@@ -7,43 +7,60 @@
 
 <div align="center">
   <img src="assets/icon.png" width="160" alt="Antigravity Quota Logo" />
-  <p><em>A native-feeling standalone Linux desktop webapp and rich terminal CLI for tracking real-time 5-hour rolling sprint quotas, weekly capacity limits, and actively kickstarting 7-day replenishment countdowns across multiple Google Antigravity accounts.</em></p>
+  <p><em>A native-feeling standalone Linux desktop webapp and rich terminal CLI for tracking real-time 5-hour rolling sprint quotas and weekly capacity limits across multiple Google Antigravity accounts — with automated weekly replenishment timer management.</em></p>
 </div>
 
 ---
 
-## 💡 Why This Exists: Moving from Observer to Manager
+## 💡 Why This Exists
 
+### 1. The Multi-Account Visibility Problem (The Monitor Foundation)
 **Google Antigravity 2.0** enforces an opaque dual-quota system:
-1. **5-Hour Rolling Limit ("Sprint Quota")**: Absorbs intensive multi-turn coding and agent loops, replenishing over a rolling 5-hour window.
-2. **Weekly Baseline Cap**: Restricts total compute effort over a 7-day period based on your plan tier (Pro/Ultra).
+* **5-Hour Rolling Limit ("Sprint Quota")**: Absorbs intensive multi-turn coding and agent loops, replenishing continuously over a 5-hour window.
+* **Weekly Baseline Cap**: Restricts total compute effort over a 7-day period based on your plan tier (Pro/Ultra).
 
-### ⏳ The "Sliding Reset Window" Trap
-When an account sits idle at 100% quota, Antigravity **does not start the 7-day replenishment clock**. Instead, the reset date dynamically slides forward (`now + 7 days`). The countdown only anchors into a fixed replenishment schedule (`in 6d 23h`) once you actually expend tokens.
+In the official Antigravity IDE, these limits are buried multiple clicks deep inside `Settings > Models & Usage`, and **you can only inspect the currently logged-in account**. Developers who balance multiple Google accounts (e.g. personal, work, secondary development accounts) have no way to monitor their available compute pools side-by-side.
 
-If you don't interact with an account, **you lose weekly replenishment cycles**.
+**Antigravity Quota Monitor** was built to solve this:
+* **Unified Multi-Account Dashboard**: See all registered Google accounts at a glance with live percentage bars, usage counts, and reset countdowns.
+* **Dual Pool Coverage**: Independently tracks both **Gemini Models** (Flash/Pro) and **Claude & GPT Models** (Sonnet/Opus/GPT-OSS).
+* **Standalone Desktop WebApp**: Operates as an independent window with **zero browser chrome** (no URL bar, no tabs, no clutter), custom dock icons, and single-instance window focusing via `wmctrl`.
+* **Rich Terminal CLI**: For keyboard-driven workflows, run `antigravity-quota status` or live-refreshing `antigravity-quota watch` directly in your terminal or tmux sessions.
+* **100% Private & Local**: Zero telemetry or third-party servers. Credentials and tokens remain strictly on your machine with POSIX `0600` permissions.
 
-**Antigravity Quota Manager** turns the app into an active optimizer:
-* **⚡ 7-Day Countdown Kickstarting**: Sends a minimal 1-word micro-ping (`"Reply with 1 word: Pong"`) consuming ~30 tokens (<0.002% quota) to lock the 7-day clock immediately to `in 6d 23h`.
-* **Multi-Account Dashboard**: See all of your Google accounts side-by-side with real-time percentages, timer status (`Active` vs `Idle`), and one-click kickstarts.
-* **Dual Pool Coverage**: Live tracking and individual pinging for both **Gemini Models** (Flash/Pro) and **Claude & GPT Models** (Sonnet/Opus/GPT-OSS).
-* **Standalone Desktop WebApp**: Runs as an independent window with **zero browser chrome** (no address bar, no tabs, no clutter), native dock icons, single-instance window focusing, and clean daemon lifecycle.
-* **Rich Terminal CLI**: Run `antigravity-quota status`, `antigravity-quota watch`, or `antigravity-quota kickstart --all` directly in your terminal or automation scripts.
-* **100% Private & Open Source**: Pure Python and vanilla JS. No closed-source helper binaries, no analytics, and credentials are saved locally with restricted POSIX permissions (`0600`).
+---
+
+### 2. From Observer to Manager: The "Sliding Reset Window" Trap
+While monitoring multiple accounts over time, a critical quirk in Antigravity's quota engine became evident:
+
+> **The Sliding Window Trap:** When an account sits idle at 100% quota, Antigravity **does not start the 7-day replenishment clock**. Instead, the reset date dynamically slides forward (`now + 7 days`). The countdown only anchors into a fixed replenishment schedule (`in 6d 23h`) once tokens are actually consumed.
+
+If you let secondary accounts sit idle waiting for a big project, **you quietly lose weekly replenishment cycles**.
+
+**Antigravity Quota Manager** elevates the tool from a passive observer to an active optimizer:
+* **⚡ 7-Day Countdown Kickstarting**: Sends a minimal 1-word micro-ping (`"Reply with 1 word: Pong"`) consuming ~30 tokens (<0.002% quota) to immediately anchor the 7-day countdown to `in 6d 23h`.
+* **One-Click UI Controls**: Global `⚡ Kickstart All Timers` in the header, card-level `⚡ Kickstart`, and granular `⚡ Ping` buttons for individual model pools.
+* **Real-Time Timer Status**: Live `Active` vs `Idle (Unanchored)` badges inform you instantly whether an account's replenishment timer is running or dormant.
+* **CLI Automation**: Run `antigravity-quota kickstart --all` in cron jobs or terminal commands to keep all accounts continuously replenishing on schedule.
 
 ---
 
 ## ✨ Features
 
-- ⚡ **Weekly Timer Kickstarting**: Lock sliding 7-day countdown timers on idle accounts with one-click in the UI or CLI.
-- 🏷️ **Real-Time Timer Status**: Instant visual feedback with `Active` vs `Idle (Unanchored)` status badges across all model pools.
-- 🎛️ **Granular Controls**: Kickstart all accounts at once, kickstart a specific account, or micro-ping an individual model pool (`Gemini` vs `Claude & GPT`).
-- 🔄 **Auto-Discovery**: Automatically links to your active local Antigravity 2.0 session on startup.
-- 🔑 **In-App Google OAuth**: Click **"+ Add Account"** in the app to authenticate additional accounts with one-time browser login.
-- 🎯 **Single-Instance Focusing**: Clicking your desktop icon or running `antigravity-quota` while the app is open brings your existing window to the front via `wmctrl` instead of opening duplicate processes.
-- ✏️ **Session Renaming**: Rename any account (e.g., *"Work"*, *"Personal"*, *"Secondary"*) right from the UI with inline editing.
-- 🧹 **Clean Process Lifecycle**: Background server starts on demand and shuts down cleanly when the window closes—no orphaned background daemons.
-- 🚫 **Zero Stale Caching**: Automatic HTTP cache clearance and `--disable-cache` browser flags ensure immediate rendering of live updates.
+### 📊 Real-Time Monitoring & Observability
+- **Multi-Account Overview**: Side-by-side visual cards for all connected accounts.
+- **Dual Model Pool Tracking**: Separate progress meters and countdowns for Gemini and Claude/GPT pools.
+- **Auto-Discovery**: Automatically detects and displays your active local Antigravity IDE session on startup.
+- **In-App Google OAuth**: Click **"+ Add Account"** to connect additional Google accounts via one-time browser login.
+- **Session Renaming**: Give accounts friendly nicknames (*"Work"*, *"Personal"*, *"Heavy Agent Run"*) with inline editing.
+- **Rich Terminal CLI**: Full terminal dashboard with colored progress bars and live auto-refresh (`status` and `watch`).
+
+### ⚡ Active Quota Management & Optimization
+- **Weekly Timer Kickstarting**: Anchor sliding 7-day replenishment countdowns with negligible micro-pings.
+- **Granular Controls**: Kickstart all accounts at once, kickstart a specific account, or target a single model pool.
+- **Real-Time Badges**: Immediate visual indicators for `Active` (anchored) vs `Idle` (sliding) weekly limits.
+- **Zero Orphaned Daemons**: Backend server starts on demand and shuts down cleanly when the window closes.
+- **Zero Stale Caching**: Automatic HTTP cache clearance and `--disable-cache` browser flags guarantee live UI updates.
 
 ---
 
