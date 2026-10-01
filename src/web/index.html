@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Antigravity Quota Monitor</title>
     <link rel="icon" type="image/png" href="icon.png">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
     <header class="app-header">
@@ -17,7 +17,10 @@
             </div>
         </div>
         <div class="header-actions">
-            <button class="btn btn-secondary" id="btn-refresh" onclick="refreshData()">
+            <button class="btn btn-warning" id="btn-kickstart-all" onclick="kickstartAllIdle()" title="Send micro-ping to start 7-day countdown on accounts">
+                <span class="btn-icon">⚡</span> <span id="kickstart-btn-label">Kickstart All Timers</span>
+            </button>
+            <button class="btn btn-secondary" id="btn-refresh" onclick="location.reload()" title="Reload App & Quota">
                 <span class="btn-icon">↻</span> Refresh
             </button>
             <button class="btn btn-primary" id="btn-add-account" onclick="openAddModal()">
@@ -34,6 +37,8 @@
             </div>
         </div>
     </main>
+
+    <div id="toast-container" class="toast-container"></div>
 
     <!-- Add Account Modal -->
     <div id="add-modal" class="modal-overlay hidden">
@@ -83,6 +88,6 @@
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=3"></script>
 </body>
 </html>

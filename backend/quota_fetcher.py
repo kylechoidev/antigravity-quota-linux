@@ -5,6 +5,7 @@ import re
 import subprocess
 import time
 import urllib3
+import uuid
 import requests
 
 from auth_manager import refresh_access_token, load_accounts
@@ -98,12 +99,16 @@ def extract_quota_summary_data(summary_json, user_status_json=None):
             "5h_reset": "Ready",
             "weekly_remaining": 100.0,
             "weekly_reset": "Ready",
+            "weekly_anchored": False,
+            "weekly_desc": "",
         },
         "claude_gpt": {
             "5h_remaining": 100.0,
             "5h_reset": "Ready",
             "weekly_remaining": 100.0,
             "weekly_reset": "Ready",
+            "weekly_anchored": False,
+            "weekly_desc": "",
         },
         "plan": "Google AI Pro",
     }
@@ -132,6 +137,7 @@ def extract_quota_summary_data(summary_json, user_status_json=None):
             fraction = bucket.get("remainingFraction", 1.0)
             pct = round(fraction * 100, 1)
             reset_str = parse_time_delta(bucket.get("resetTime"))
+            desc = bucket.get("description") or ""
 
             if window == "5h":
                 target["5h_remaining"] = pct
@@ -139,6 +145,9 @@ def extract_quota_summary_data(summary_json, user_status_json=None):
             elif window == "weekly":
                 target["weekly_remaining"] = pct
                 target["weekly_reset"] = reset_str
+                # Anchored when consumption description exists or remaining fraction is below 0.99999
+                target["weekly_anchored"] = bool(desc) or fraction < 0.99999
+                target["weekly_desc"] = desc
 
     return result
 
@@ -241,3 +250,154 @@ def fetch_all_accounts_quota():
         results.append(data)
 
     return results
+
+def kickstart_pool(access_token, pool="gemini"):
+    """Fires a micro-ping to start the 7-day countdown on a specific quota pool."""
+    if pool == "claude_gpt" or pool == "claude":
+        model = "claude-sonnet-4-6"
+        pool_key = "claude_gpt"
+    else:
+        model = "gemini-3.8-flash-high"
+        pool_key = "gemini"
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+        "User-Agent": "antigravity/2.12.2 (Linux x86_64)",
+    }
+
+    body = {
+        "project": "aicode-consumers",
+        "model": model,
+        "requestId": str(uuid.uuid4()),
+        "request": {
+            "contents": [
+                {"role": "user", "parts": [{"text": "Reply with 1 word: Pong"}]}
+            ]
+        }
+    }
+
+    endpoints = [CLOUD_CODE_ENDPOINT, PROD_CLOUD_CODE_ENDPOINT]
+    last_err = None
+    for ep in endpoints:
+        url = f"{ep}/v1internal:generateContent"
+        try:
+            resp = requests.post(url, headers=headers, json=body, timeout=12)
+            if resp.status_code == 200:
+                data = resp.json()
+                reply = ""
+                try:
+                    candidates = data.get("response", {}).get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if parts:
+                            reply = parts[0].get("text", "").strip()
+                except Exception:
+                    pass
+                return {
+                    "status": "ok",
+                    "pool": pool_key,
+                    "model": model,
+                    "reply": reply or "Pong",
+                }
+            else:
+                last_err = f"HTTP {resp.status_code}: {resp.text[:120]}"
+        except Exception as e:
+            last_err = str(e)
+
+    return {"status": "error", "pool": pool_key, "model": model, "error": last_err or "Unknown error"}
+
+def kickstart_account(account, pools=None):
+    """Refreshes tokens and triggers micro-pings for the specified pools on an account."""
+    if pools is None:
+        pools = ["gemini", "claude_gpt"]
+    elif isinstance(pools, str):
+        pools = [pools]
+
+    # Normalize pool names
+    normalized_pools = []
+    for p in pools:
+        p_lower = p.lower()
+        if "claude" in p_lower or "gpt" in p_lower or "3p" in p_lower:
+            normalized_pools.append("claude_gpt")
+        else:
+            normalized_pools.append("gemini")
+    normalized_pools = list(dict.fromkeys(normalized_pools))
+
+    refresh_token = account.get("refresh_token")
+    if not refresh_token:
+        return {
+            "status": "error",
+            "name": account.get("name"),
+            "email": account.get("email"),
+            "error": "Account does not have a stored OAuth refresh token (e.g. local session)."
+        }
+
+    try:
+        access_token, _ = refresh_access_token(refresh_token)
+    except Exception as e:
+        return {
+            "status": "error",
+            "name": account.get("name"),
+            "email": account.get("email"),
+            "error": f"Token refresh failed: {e}"
+        }
+
+    results = {}
+    for pool in normalized_pools:
+        res = kickstart_pool(access_token, pool=pool)
+        results[pool] = res
+
+    # Brief delay for Google's quota accounting to reflect
+    time.sleep(1.0)
+    updated_quota = fetch_oauth_account_quota(account)
+    updated_quota["name"] = account.get("name", "Account")
+    updated_quota["email"] = account.get("email", "")
+    updated_quota["type"] = account.get("type", "oauth")
+
+    return {
+        "status": "ok",
+        "name": account.get("name"),
+        "email": account.get("email"),
+        "results": results,
+        "quota": updated_quota,
+    }
+
+def kickstart_all_idle_accounts(pools=None, only_unanchored=True):
+    """Kickstarts all registered OAuth accounts that have unanchored weekly limits."""
+    accounts = load_accounts()
+    if not accounts:
+        return []
+
+    summary = []
+    for acc in accounts:
+        if acc.get("type") == "local_active" or not acc.get("refresh_token"):
+            continue
+
+        target_pools = pools
+        if only_unanchored:
+            # Check current quota to see which pools are unanchored
+            current_q = fetch_oauth_account_quota(acc)
+            needed_pools = []
+            if not current_q.get("gemini", {}).get("weekly_anchored", False):
+                needed_pools.append("gemini")
+            if not current_q.get("claude_gpt", {}).get("weekly_anchored", False):
+                needed_pools.append("claude_gpt")
+
+            if not needed_pools:
+                # Already all anchored
+                summary.append({
+                    "status": "skipped",
+                    "name": acc.get("name"),
+                    "email": acc.get("email"),
+                    "reason": "All requested pools already anchored",
+                    "quota": current_q,
+                })
+                continue
+            target_pools = needed_pools
+
+        res = kickstart_account(acc, pools=target_pools)
+        summary.append(res)
+
+    return summary
+

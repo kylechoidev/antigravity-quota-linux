@@ -51,8 +51,17 @@ def is_backend_alive():
     except Exception:
         return False
 
-def ensure_backend_running():
-    if is_backend_alive():
+def kill_backend():
+    try:
+        subprocess.run(["pkill", "-f", "antigravity-quota-app/backend/server.py"], stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
+def ensure_backend_running(force_restart=False):
+    if force_restart:
+        kill_backend()
+        time.sleep(0.3)
+    elif is_backend_alive():
         return None
 
     print("Starting Antigravity Quota backend service...")
@@ -128,6 +137,12 @@ def handle_cli_commands():
     p_rem = subparsers.add_parser("remove", help="Remove an account")
     p_rem.add_argument("identifier", help="Account name or email to remove")
 
+    p_kick = subparsers.add_parser("kickstart", help="Anchor 7-day countdown timers on idle accounts")
+    p_kick.add_argument("identifier", nargs="?", default=None, help="Specific account name or email (or omit with --all)")
+    p_kick.add_argument("--all", "-a", action="store_true", help="Kickstart all idle accounts")
+    p_kick.add_argument("--pool", "-p", choices=["gemini", "claude", "both"], default="both", help="Target quota pool (default: both)")
+    p_kick.add_argument("--force", "-f", action="store_true", help="Force kickstart even if already anchored")
+
     args = parser.parse_args()
 
     if args.command == "status":
@@ -161,6 +176,43 @@ def handle_cli_commands():
             console.print(f"[green]Removed '{args.identifier}'.[/green]")
         else:
             console.print(f"[red]Account '{args.identifier}' not found.[/red]")
+    elif args.command == "kickstart":
+        from quota_fetcher import kickstart_account, kickstart_all_idle_accounts
+        target_pools = ["gemini", "claude_gpt"] if args.pool == "both" else [args.pool]
+        accounts = load_accounts()
+
+        if args.all or not args.identifier:
+            console.print(f"[bold cyan]⚡ Kickstarting idle accounts (Pools: {', '.join(target_pools)})...[/bold cyan]")
+            with console.status("[bold green]Executing micro-pings...[/bold green]"):
+                summary = kickstart_all_idle_accounts(pools=target_pools, only_unanchored=not args.force)
+            if not summary:
+                console.print("[yellow]No accounts eligible for kickstart.[/yellow]")
+            for item in summary:
+                if item.get("status") == "skipped":
+                    console.print(f" [dim]- {item.get('name')}: {item.get('reason')}[/dim]")
+                elif item.get("status") == "ok":
+                    q = item.get("quota", {})
+                    g_res = q.get("gemini", {}).get("weekly_reset")
+                    c_res = q.get("claude_gpt", {}).get("weekly_reset")
+                    console.print(f" [green]✓[/green] [bold]{item.get('name')}[/bold]: Anchored! [cyan]Gemini reset {g_res}[/cyan] | [purple]Claude reset {c_res}[/purple]")
+                else:
+                    console.print(f" [red]✗[/red] {item.get('name')}: {item.get('error')}")
+        else:
+            acc = next((a for a in accounts if a.get("name", "").lower() == args.identifier.lower() or a.get("email", "").lower() == args.identifier.lower()), None)
+            if not acc:
+                console.print(f"[red]Could not find account '{args.identifier}'.[/red]")
+                return
+            with console.status(f"[bold green]Kickstarting {acc.get('name')}...[/bold green]"):
+                res = kickstart_account(acc, pools=target_pools)
+            if res.get("status") == "ok":
+                q = res.get("quota", {})
+                g_res = q.get("gemini", {}).get("weekly_reset")
+                c_res = q.get("claude_gpt", {}).get("weekly_reset")
+                console.print(f"[green]✓ Successfully anchored 7-day countdown for [bold]{acc.get('name')}[/bold]![/green]")
+                console.print(f"  • Gemini Weekly Reset: [bold cyan]{g_res}[/bold cyan]")
+                console.print(f"  • Claude Weekly Reset: [bold purple]{c_res}[/bold purple]")
+            else:
+                console.print(f"[red]Error kickstarting {acc.get('name')}: {res.get('error')}[/red]")
 
 def main():
     # If arguments provided, run CLI command
@@ -172,7 +224,17 @@ def main():
     if check_already_running():
         sys.exit(0)
 
-    server_proc = ensure_backend_running()
+    # Cleanly start a fresh backend instance
+    ensure_backend_running(force_restart=True)
+
+    # Purge chromium HTTP cache to guarantee fresh assets are rendered
+    http_cache = Path.home() / ".cache" / "antigravity-quota-webapp-profile"
+    if http_cache.exists():
+        try:
+            import shutil
+            shutil.rmtree(http_cache, ignore_errors=True)
+        except Exception:
+            pass
 
     screen_w, screen_h = get_screen_size()
     win_w, win_h = 1040, 760
@@ -191,6 +253,8 @@ def main():
         "--no-first-run",
         "--no-default-browser-check",
         "--disable-component-update",
+        "--disable-cache",
+        "--disk-cache-size=1",
         "--password-store=basic",
     ]
 
@@ -203,6 +267,8 @@ def main():
         chrome_proc.wait()
     except KeyboardInterrupt:
         pass
+    finally:
+        kill_backend()
 
 if __name__ == "__main__":
     main()

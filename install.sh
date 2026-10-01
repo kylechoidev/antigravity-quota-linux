@@ -100,7 +100,7 @@ cat <<DESKTOP_EOF > "$APP_DIR/antigravity-quota.desktop"
 Version=1.0
 Type=Application
 Name=Antigravity Quota
-Comment=Antigravity Multi-Account Quota Monitor
+Comment=Antigravity Multi-Account Quota Manager & Timer Optimizer
 Exec=$LAUNCHER
 Icon=$ICON_DIR/antigravity-quota.png
 Terminal=false

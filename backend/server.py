@@ -13,13 +13,25 @@ from auth_manager import (
     rename_account,
     remove_account,
 )
-from quota_fetcher import fetch_all_accounts_quota
+from quota_fetcher import (
+    fetch_all_accounts_quota,
+    kickstart_account,
+    kickstart_all_idle_accounts,
+)
 
 WEB_DIR = Path(__file__).parent.parent / "src" / "web"
+
 
 class AppServerHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(WEB_DIR), **kwargs)
+
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        super().end_headers()
+
 
     def do_GET(self):
         if self.path == "/api/status":
@@ -84,6 +96,35 @@ class AppServerHandler(SimpleHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"status": "ok" if success else "not_found"}).encode("utf-8"))
+            return
+
+        elif self.path == "/api/kickstart-account":
+            identifier = payload.get("identifier", "").lower()
+            pools = payload.get("pools", ["gemini", "claude_gpt"])
+            accounts = load_accounts()
+            target_acc = next((a for a in accounts if a.get("name", "").lower() == identifier or a.get("email", "").lower() == identifier), None)
+            if not target_acc:
+                self.send_response(404)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"status": "error", "error": "Account not found"}).encode("utf-8"))
+                return
+
+            res = kickstart_account(target_acc, pools=pools)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(res).encode("utf-8"))
+            return
+
+        elif self.path == "/api/kickstart-all":
+            pools = payload.get("pools", ["gemini", "claude_gpt"])
+            only_unanchored = payload.get("onlyUnanchored", True)
+            summary = kickstart_all_idle_accounts(pools=pools, only_unanchored=only_unanchored)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "ok", "results": summary}).encode("utf-8"))
             return
 
         self.send_response(404)

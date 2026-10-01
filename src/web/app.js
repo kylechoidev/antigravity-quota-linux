@@ -37,6 +37,10 @@ function renderCard(acc) {
 
     const gem = acc.gemini || {};
     const cgpt = acc.claude_gpt || {};
+    const gemAnchored = gem.weekly_anchored;
+    const cgptAnchored = cgpt.weekly_anchored;
+    const canKickstart = !isLocal && acc.type === 'oauth';
+    const anyUnanchored = canKickstart && (!gemAnchored || !cgptAnchored);
 
     return `
     <div class="account-card">
@@ -49,6 +53,7 @@ function renderCard(acc) {
                 <div class="acc-email">${subtitleText}</div>
             </div>
             <div class="top-badges">
+                ${canKickstart ? `<button class="kickstart-btn" onclick="kickstartAccount('${acc.name}', ['gemini', 'claude_gpt'])" title="Send micro-ping to start/refresh 7-day countdown on both pools">⚡ Kickstart</button>` : ''}
                 <span class="badge-plan">${acc.plan || 'Active Plan'}</span>
                 ${!isLocal ? `<button class="delete-btn" title="Remove Account" onclick="removeAccount('${acc.name}')">🗑</button>` : ''}
             </div>
@@ -78,7 +83,10 @@ function renderCard(acc) {
                 <div class="progress-track">
                     <div class="progress-fill" style="width: ${gem['weekly_remaining']}%; background: ${getColor(gem['weekly_remaining'])};"></div>
                 </div>
-                <div class="quota-reset">Reset: ${gem['weekly_reset']}</div>
+                <div class="quota-reset" style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
+                    <span>Reset: ${gem['weekly_reset']} ${gemAnchored ? '<span class="badge-anchored">Active</span>' : '<span class="badge-idle">Idle</span>'}</span>
+                    ${canKickstart ? `<button class="kickstart-btn" onclick="kickstartAccount('${acc.name}', ['gemini'])" title="Send micro-ping to kickstart Gemini 7-day timer">⚡ Ping</button>` : ''}
+                </div>
             </div>
         </div>
 
@@ -106,10 +114,72 @@ function renderCard(acc) {
                 <div class="progress-track">
                     <div class="progress-fill" style="width: ${cgpt['weekly_remaining']}%; background: ${getColor(cgpt['weekly_remaining'])};"></div>
                 </div>
-                <div class="quota-reset">Reset: ${cgpt['weekly_reset']}</div>
+                <div class="quota-reset" style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
+                    <span>Reset: ${cgpt['weekly_reset']} ${cgptAnchored ? '<span class="badge-anchored">Active</span>' : '<span class="badge-idle">Idle</span>'}</span>
+                    ${canKickstart ? `<button class="kickstart-btn" onclick="kickstartAccount('${acc.name}', ['claude_gpt'])" title="Send micro-ping to kickstart Claude 7-day timer">⚡ Ping</button>` : ''}
+                </div>
             </div>
         </div>
     </div>`;
+}
+
+function showToast(message, type = 'success') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `<span>${type === 'success' ? '⚡' : '⚠️'}</span><span>${message}</span>`;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s';
+        setTimeout(() => toast.remove(), 300);
+    }, 4000);
+}
+
+async function kickstartAccount(name, pools) {
+    showToast(`Starting countdown for ${name}...`, 'success');
+    try {
+        const resp = await fetch('/api/kickstart-account', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identifier: name, pools: pools })
+        });
+        const res = await resp.json();
+        if (res.status === 'ok') {
+            showToast(`✓ Countdown anchored for ${name}!`, 'success');
+            await refreshData();
+        } else {
+            showToast(`Failed: ${res.error || 'Unknown error'}`, 'error');
+        }
+    } catch (err) {
+        showToast(`Error: ${err.message}`, 'error');
+    }
+}
+
+async function kickstartAllIdle() {
+    const btn = document.getElementById('btn-kickstart-all');
+    if (btn) btn.disabled = true;
+    showToast('⚡ Sending micro-pings to lock 7-day countdown timers...', 'success');
+    try {
+        const resp = await fetch('/api/kickstart-all', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pools: ['gemini', 'claude_gpt'], onlyUnanchored: false })
+        });
+        const res = await resp.json();
+        if (res.status === 'ok') {
+            const count = (res.results || []).filter(r => r.status === 'ok').length;
+            showToast(`✓ Micro-pings confirmed for ${count} account(s)!`, 'success');
+            await refreshData();
+        } else {
+            showToast('Failed to kickstart accounts', 'error');
+        }
+    } catch (err) {
+        showToast(`Error: ${err.message}`, 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
 }
 
 async function refreshData() {
@@ -125,6 +195,32 @@ async function refreshData() {
                 </div>`;
             return;
         }
+
+        let idleCount = 0;
+        data.forEach(acc => {
+            if (acc.status === 'online' && acc.type === 'oauth') {
+                const g = acc.gemini || {};
+                const c = acc.claude_gpt || {};
+                if (!g.weekly_anchored || !c.weekly_anchored) {
+                    idleCount++;
+                }
+            }
+        });
+        const kickAllBtn = document.getElementById('btn-kickstart-all');
+        const kickLabel = document.getElementById('kickstart-btn-label');
+        if (kickLabel) {
+            if (idleCount > 0) {
+                kickLabel.innerText = `Kickstart Idle (${idleCount})`;
+                if (kickAllBtn) kickAllBtn.title = `Send micro-ping to ${idleCount} idle account(s) to start 7-day countdown`;
+            } else {
+                kickLabel.innerText = 'Kickstart All Timers';
+                if (kickAllBtn) kickAllBtn.title = 'All accounts anchored! Click to refresh or ping all timers';
+            }
+        }
+        if (kickAllBtn) {
+            kickAllBtn.classList.remove('hidden');
+        }
+
         grid.innerHTML = data.map(renderCard).join('');
     } catch (err) {
         console.error("Failed to fetch quota:", err);

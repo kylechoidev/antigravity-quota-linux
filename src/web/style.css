@@ -23,6 +23,11 @@
     padding: 0;
 }
 
+.hidden {
+    display: none !important;
+}
+
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     background-color: var(--bg-primary);
@@ -109,6 +114,96 @@ body {
 }
 .btn-secondary:hover {
     background-color: #30363d;
+}
+
+.btn-warning {
+    background-color: #8b5cf6;
+    background: linear-gradient(135deg, #d29922, #b08800);
+    color: #ffffff;
+    border-color: #e3b341;
+}
+.btn-warning:hover {
+    background: linear-gradient(135deg, #e3b341, #c69b00);
+    box-shadow: 0 0 12px var(--yellow-glow);
+}
+
+.kickstart-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: rgba(210, 153, 34, 0.15);
+    color: #f0b72f;
+    border: 1px solid rgba(210, 153, 34, 0.4);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.kickstart-btn:hover {
+    background: rgba(210, 153, 34, 0.3);
+    border-color: #f0b72f;
+    color: #fff;
+    box-shadow: 0 0 8px var(--yellow-glow);
+}
+.kickstart-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.badge-idle {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(210, 153, 34, 0.15);
+    color: #d29922;
+    border: 1px solid rgba(210, 153, 34, 0.3);
+    margin-left: 6px;
+}
+.badge-anchored {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(46, 160, 67, 0.15);
+    color: #2ea043;
+    border: 1px solid rgba(46, 160, 67, 0.3);
+    margin-left: 6px;
+}
+
+.toast-container {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 1000;
+    pointer-events: none;
+}
+.toast {
+    background: #161b22;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    padding: 12px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    animation: toastIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.toast-success { border-color: var(--green); }
+.toast-error { border-color: var(--red); }
+@keyframes toastIn {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
 }
 
 .content-container {

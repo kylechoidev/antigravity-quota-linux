@@ -15,11 +15,13 @@ def get_color_for_pct(pct):
     else:
         return "red"
 
-def render_progress_cell(pct, reset_time):
+def render_progress_cell(pct, reset_time, is_anchored=True, is_weekly=False):
     color = get_color_for_pct(pct)
     # Simple text progress bar: [■■■■■     ]
     filled = int(round(pct / 10))
     bar = "■" * filled + " " * (10 - filled)
+    if is_weekly and not is_anchored:
+        return f"[{color}]{pct:5.1f}% [{bar}][/{color}]\n[bold yellow]⚡ Idle (Unanchored)[/bold yellow]"
     return f"[{color}]{pct:5.1f}% [{bar}][/{color}]\n[dim]{reset_time}[/dim]"
 
 def build_status_table(accounts_data):
@@ -64,9 +66,19 @@ def build_status_table(accounts_data):
         c_gpt = item.get("claude_gpt", {})
 
         gem_5h = render_progress_cell(gem.get("5h_remaining", 100.0), gem.get("5h_reset", "Ready"))
-        gem_wk = render_progress_cell(gem.get("weekly_remaining", 100.0), gem.get("weekly_reset", "Ready"))
+        gem_wk = render_progress_cell(
+            gem.get("weekly_remaining", 100.0),
+            gem.get("weekly_reset", "Ready"),
+            is_anchored=gem.get("weekly_anchored", True),
+            is_weekly=True
+        )
         cgpt_5h = render_progress_cell(c_gpt.get("5h_remaining", 100.0), c_gpt.get("5h_reset", "Ready"))
-        cgpt_wk = render_progress_cell(c_gpt.get("weekly_remaining", 100.0), c_gpt.get("weekly_reset", "Ready"))
+        cgpt_wk = render_progress_cell(
+            c_gpt.get("weekly_remaining", 100.0),
+            c_gpt.get("weekly_reset", "Ready"),
+            is_anchored=c_gpt.get("weekly_anchored", True),
+            is_weekly=True
+        )
 
         table.add_row(
             acc_label,
