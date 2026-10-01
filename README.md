@@ -61,7 +61,7 @@ If you don't interact with an account, **you lose weekly replenishment cycles**.
 Clone the repository and run the automated installer:
 
 ```bash
-git clone https://github.com/mailinglistenator/antigravity-quota-linux.git
+git clone https://github.com/kylechoidev/antigravity-quota-linux.git
 cd antigravity-quota-linux
 ./install.sh
 ```
